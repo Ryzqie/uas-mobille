@@ -1,0 +1,197 @@
+import 'package:flutter/material.dart';
+import '../services/api_service.dart';
+import '../models/product.dart';
+
+void main() {
+  runApp(MyApp());
+}
+
+class MyApp extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Product CRUD',
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+      ),
+      home: ProductListPage(),
+    );
+  }
+}
+
+class ProductListPage extends StatefulWidget {
+  @override
+  _ProductListPageState createState() => _ProductListPageState();
+}
+
+class _ProductListPageState extends State<ProductListPage> {
+  late Future<List<Product>> futureProducts;
+  final ApiService apiService = ApiService();
+
+  @override
+  void initState() {
+    super.initState();
+    futureProducts = apiService.getProducts();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Product List'),
+      ),
+      body: FutureBuilder<List<Product>>(
+        future: futureProducts,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return Center(child: CircularProgressIndicator());
+          } else if (snapshot.hasError) {
+            return Center(child: Text('Failed to load products'));
+          } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+            return Center(child: Text('No products found'));
+          } else {
+            return ListView.builder(
+              itemCount: snapshot.data!.length,
+              itemBuilder: (context, index) {
+                Product product = snapshot.data![index];
+                return ListTile(
+                  title: Text(product.name),
+                  subtitle: Text(product.price.toString()),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: Icon(Icons.edit),
+                        onPressed: () async {
+                          Product? updatedProduct = await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) =>
+                                  ProductFormPage(product: product),
+                            ),
+                          );
+                          if (updatedProduct != null) {
+                            apiService.updateProduct(updatedProduct).then((_) {
+                              setState(() {
+                                futureProducts = apiService.getProducts();
+                              });
+                            });
+                          }
+                        },
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.delete),
+                        onPressed: () {
+                          apiService.deleteProduct(product.id!).then((_) {
+                            setState(() {
+                              futureProducts = apiService.getProducts();
+                            });
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                );
+              },
+            );
+          }
+        },
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () async {
+          Product? newProduct = await Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => ProductFormPage(product: null)),
+          );
+          if (newProduct != null) {
+            apiService.createProduct(newProduct).then((value) {
+              setState(() {
+                futureProducts = apiService.getProducts();
+              });
+            });
+          }
+        },
+        child: Icon(Icons.add),
+      ),
+    );
+  }
+}
+
+class ProductFormPage extends StatefulWidget {
+  final Product? product;
+
+  ProductFormPage({this.product});
+
+  @override
+  _ProductFormPageState createState() => _ProductFormPageState();
+}
+
+class _ProductFormPageState extends State<ProductFormPage> {
+  final _formKey = GlobalKey<FormState>();
+  late TextEditingController _nameController;
+  late TextEditingController _priceController;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(text: widget.product?.name);
+    _priceController = TextEditingController(
+        text: widget.product?.price != null ? widget.product!.price.toString() : '');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.product == null ? 'New Product' : 'Edit Product'),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            children: [
+              TextFormField(
+                controller: _nameController,
+                decoration: InputDecoration(labelText: 'Name'),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please enter a name';
+                  }
+                  return null;
+                },
+              ),
+              TextFormField(
+                controller: _priceController,
+                decoration: InputDecoration(labelText: 'Price'),
+                keyboardType: TextInputType.number,
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please enter a price';
+                  }
+                  return null;
+                },
+              ),
+              SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: () {
+                  if (_formKey.currentState!.validate()) {
+                    Navigator.pop(
+                      context,
+                      Product(
+                        id: widget.product?.id,
+                        name: _nameController.text,
+                        price: double.parse(_priceController.text),
+                      ),
+                    );
+                  }
+                },
+                child: Text('Save'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
